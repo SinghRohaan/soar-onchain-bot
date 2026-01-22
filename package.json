@@ -1,0 +1,12 @@
+{
+  "name": "soar-onchain-bot",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "@solana/web3.js": "^1.95.0",
+    "axios": "^1.6.0"
+  },
+  "scripts": {
+    "start": "node index.js"
+  }
+}
