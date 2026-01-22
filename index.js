@@ -19,7 +19,7 @@ const SOAR_DEPLOYER = new PublicKey(
   "97Qy3dyZF4U2b3iqADnuptwu2M8D72UYB2tpSCQnhegR"
 );
 
-const RPC_URL = "https://api.mainnet-beta.solana.com";
+const RPC_URL = "https://mainnet.helius-rpc.com/?api-key=f4071dd5-0241-40ba-ab5f-0558e9efedc1";
 
 /* ======================
    SOLANA CONNECTION
