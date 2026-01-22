@@ -37,6 +37,7 @@ if (fs.existsSync(SEEN_FILE)) {
 
 async function sendDiscordAlert(project) {
   const payload = {
+    content: `<@${282852614947864576}>`, // 👈 THIS TAGS YOU
     username: "SOAR Curated Alerts",
     embeds: [
       {
@@ -69,6 +70,7 @@ async function sendDiscordAlert(project) {
 
   await axios.post(DISCORD_WEBHOOK, payload);
 }
+
 
 /* ======================
    POLLER
