@@ -1,5 +1,5 @@
-import { Connection, PublicKey } from "@solana/web3.js";
 import axios from "axios";
+import fs from "fs";
 
 /* ======================
    ENV CHECK
@@ -12,60 +12,55 @@ if (!DISCORD_WEBHOOK) {
 }
 
 /* ======================
-   CONSTANTS
+   CONFIG
 ====================== */
 
-// SOAR deployer wallet (fee payer)
-const SOAR_DEPLOYER = new PublicKey(
-  "97Qy3dyZF4U2b3iqADnuptwu2M8D72UYB2tpSCQnhegR"
-);
+const SOAR_API =
+  "https://api.launchonsoar.com/app/projects/curated?limit=10&sortBy=createdAt&sortDirection=desc";
 
-// SPL Token program (this emits InitializeMint logs)
-const SPL_TOKEN_PROGRAM = new PublicKey(
-  "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
-);
-
-// 🔑 Helius RPC (REQUIRED)
-const RPC_URL = "https://mainnet.helius-rpc.com/?api-key=f4071dd5-0241-40ba-ab5f-0558e9efedc1";
+const POLL_INTERVAL = 5_000; // 5 seconds
+const SEEN_FILE = "seen.json";
 
 /* ======================
-   CONNECTION
+   SEEN CACHE
 ====================== */
 
-const connection = new Connection(RPC_URL, "processed");
-console.log("🚀 Listening for SOAR on-chain launches...");
+let seen = new Set();
 
-/* ======================
-   DUPLICATE PROTECTION
-====================== */
-
-const seenMints = new Set();
+if (fs.existsSync(SEEN_FILE)) {
+  seen = new Set(JSON.parse(fs.readFileSync(SEEN_FILE)));
+}
 
 /* ======================
    DISCORD ALERT
 ====================== */
 
-async function sendDiscordAlert(mint, signature) {
+async function sendDiscordAlert(project) {
   const payload = {
-    username: "SOAR Onchain Alerts",
+    username: "SOAR Curated Alerts",
     embeds: [
       {
-        title: "🚀 New SOAR Launch (ON-CHAIN)",
-        color: 0x14f195,
+        title: "✅ New SOAR Curated Project",
+        color: 0x2ecc71,
         fields: [
           {
-            name: "Mint Address",
-            value: `\`\`\`${mint}\`\`\``,
+            name: "Project",
+            value: project.name || project.slug || "Unknown",
             inline: false
           },
           {
-            name: "Transaction",
-            value: `[View on Solscan](https://solscan.io/tx/${signature})`,
+            name: "Category",
+            value: project.category || "—",
+            inline: true
+          },
+          {
+            name: "View",
+            value: `[Open on SOAR](https://app.launchonsoar.com/project/${project.slug})`,
             inline: false
           }
         ],
         footer: {
-          text: "Detected directly from Solana (Helius)"
+          text: "SOAR Curated / Verified"
         },
         timestamp: new Date().toISOString()
       }
@@ -76,50 +71,34 @@ async function sendDiscordAlert(mint, signature) {
 }
 
 /* ======================
-   CORE LISTENER (CORRECT)
+   POLLER
 ====================== */
 
-connection.onLogs(
-  SPL_TOKEN_PROGRAM,
-  async (logInfo) => {
-    try {
-      // Fast filter: only mint initializations
-      const hasInitMint = logInfo.logs.some(log =>
-        log.includes("InitializeMint")
-      );
-      if (!hasInitMint) return;
+async function poll() {
+  try {
+    const res = await axios.get(SOAR_API);
+    const projects = res.data?.data || res.data || [];
 
-      // Fetch parsed transaction
-      const tx = await connection.getParsedTransaction(
-        logInfo.signature,
-        { maxSupportedTransactionVersion: 0 }
-      );
-      if (!tx) return;
+    for (const project of projects) {
+      const id = project.id || project.slug;
+      if (!id) continue;
 
-      // Fee payer check (SOAR filter)
-      const feePayer =
-        tx.transaction.message.accountKeys[0].pubkey.toBase58();
+      if (seen.has(id)) continue;
 
-      if (feePayer !== SOAR_DEPLOYER.toBase58()) return;
+      seen.add(id);
+      fs.writeFileSync(SEEN_FILE, JSON.stringify([...seen]));
 
-      // Extract mint
-      for (const ix of tx.transaction.message.instructions) {
-        if (
-          ix.program === "spl-token" &&
-          ix.parsed?.type === "initializeMint"
-        ) {
-          const mint = ix.parsed.info.mint;
-
-          if (seenMints.has(mint)) return;
-          seenMints.add(mint);
-
-          console.log("🆕 SOAR mint detected:", mint);
-          await sendDiscordAlert(mint, logInfo.signature);
-        }
-      }
-    } catch (err) {
-      console.error("Error processing tx:", err.message);
+      console.log("✅ New curated project:", id);
+      await sendDiscordAlert(project);
     }
-  },
-  "processed"
-);
+  } catch (err) {
+    console.error("Error polling SOAR:", err.message);
+  }
+}
+
+/* ======================
+   START
+====================== */
+
+console.log("🚀 Listening for SOAR curated projects...");
+setInterval(poll, POLL_INTERVAL);
